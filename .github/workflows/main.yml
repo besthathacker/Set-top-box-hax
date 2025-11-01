@@ -1,0 +1,94 @@
+name: Shaw Custom OS Build (SD Image)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      OUTPUT_DIR: output
+
+    steps:
+    - name: Checkout repo
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt update
+        sudo apt install -y build-essential git debootstrap gcc-arm-linux-gnueabihf bc bison flex libssl-dev cpio qemu-user-static parted kpartx dosfstools
+
+    - name: Clone stblinux kernel
+      run: |
+        git clone --depth=1 https://github.com/Broadcom/stblinux.git kernel
+
+    - name: Auto-detect BCM74758 DTS
+      run: |
+        echo "Searching for DTS compatible with BCM74758..."
+        DTS_DIR="kernel/arch/arm/boot/dts"
+        MATCHED_DTS=""
+        for f in $DTS_DIR/bcm7445*.dts; do
+          if grep -q "brahma-b15" "$f" && grep -q "memory_controllers@f1100000" "$f"; then
+            MATCHED_DTS="$f"
+            break
+          fi
+        done
+        if [ -z "$MATCHED_DTS" ]; then
+          MATCHED_DTS=$(ls $DTS_DIR/bcm7445*.dts | head -n1)
+        fi
+        echo "Selected DTS: $MATCHED_DTS"
+        echo "DTS_FILE=$MATCHED_DTS" >> $GITHUB_ENV
+
+    - name: Apply optional patches
+      run: |
+        mkdir -p patches
+        for patch in patches/*.patch; do
+          git -C kernel apply $patch || true
+        done
+
+    - name: Build kernel + DTB
+      run: |
+        cd kernel
+        export ARCH=arm
+        export CROSS_COMPILE=arm-linux-gnueabihf-
+        make bcm7445_defconfig
+        make -j$(nproc) zImage dtbs
+        cp arch/arm/boot/zImage ../output/
+        cp "$DTS_FILE" ../output/bcm7445.dtb
+
+    - name: Build rootfs + initramfs
+      run: |
+        mkdir -p rootfs
+        sudo debootstrap --arch=armhf focal rootfs http://ports.ubuntu.com/
+        sudo chroot rootfs apt-get install -y bash coreutils openssh-server
+        sudo chroot rootfs apt-get clean
+        cd rootfs
+        find . | cpio -H newc -o | gzip > ../output/initramfs.cpio.gz
+
+    - name: Create SD card image
+      run: |
+        IMG="output/shaw_custom_os.img"
+        dd if=/dev/zero of=$IMG bs=1M count=2048
+        parted $IMG mklabel msdos
+        parted $IMG mkpart primary fat32 1MiB 128MiB
+        parted $IMG mkpart primary ext4 128MiB 100%
+        LOOP=$(sudo losetup -f --show -P $IMG)
+        sudo mkfs.vfat ${LOOP}p1
+        sudo mkfs.ext4 ${LOOP}p2
+        mkdir -p mnt/boot mnt/root
+        sudo mount ${LOOP}p1 mnt/boot
+        sudo mount ${LOOP}p2 mnt/root
+        sudo cp output/zImage output/bcm7445.dtb output/initramfs.cpio.gz mnt/boot/
+        sudo cp -r rootfs/* mnt/root/
+        sudo umount mnt/boot mnt/root
+        sudo losetup -d $LOOP
+        echo "SD image created at $IMG"
+
+    - name: Upload SD image artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: shaw-custom-os-sd
+        path: output/shaw_custom_os.img
