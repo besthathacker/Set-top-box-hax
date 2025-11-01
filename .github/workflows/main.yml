@@ -1,4 +1,4 @@
-name: Shaw Custom OS Build (SD Image)
+name: Shaw Custom OS Build (Auto Defconfig + SD Image)
 
 on:
   push:
@@ -23,11 +23,10 @@ jobs:
 
     - name: Clone stblinux kernel
       run: |
-        git clone --depth=1 https://github.com/Broadcom/stblinux.git kernel
+        git clone https://github.com/Broadcom/stblinux.git kernel
 
     - name: Auto-detect BCM74758 DTS
       run: |
-        echo "Searching for DTS compatible with BCM74758..."
         DTS_DIR="kernel/arch/arm/boot/dts"
         MATCHED_DTS=""
         for f in $DTS_DIR/bcm7445*.dts; do
@@ -41,6 +40,15 @@ jobs:
         fi
         echo "Selected DTS: $MATCHED_DTS"
         echo "DTS_FILE=$MATCHED_DTS" >> $GITHUB_ENV
+
+    - name: Generate minimal defconfig
+      run: |
+        cd kernel
+        export ARCH=arm
+        export CROSS_COMPILE=arm-linux-gnueabihf-
+        make allnoconfig
+        cp .config arch/arm/configs/bcm7445_defconfig
+        echo "Generated minimal bcm7445_defconfig"
 
     - name: Apply optional patches
       run: |
