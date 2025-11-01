@@ -1,4 +1,4 @@
-name: Shaw Custom OS Build (Auto Defconfig + SD Image)
+name: Shaw Custom OS Build (Auto-Configured Kernel + SD Image)
 
 on:
   push:
@@ -23,7 +23,7 @@ jobs:
 
     - name: Clone stblinux kernel
       run: |
-        git clone https://github.com/Broadcom/stblinux.git kernel
+        git clone --depth=1 https://github.com/Broadcom/stblinux.git kernel
 
     - name: Auto-detect BCM74758 DTS
       run: |
@@ -41,14 +41,32 @@ jobs:
         echo "Selected DTS: $MATCHED_DTS"
         echo "DTS_FILE=$MATCHED_DTS" >> $GITHUB_ENV
 
-    - name: Generate minimal defconfig
+    - name: Generate minimal defconfig and tweak
       run: |
         cd kernel
         export ARCH=arm
         export CROSS_COMPILE=arm-linux-gnueabihf-
         make allnoconfig
+
+        # Enable essential drivers for BCM74758
+        scripts/config --enable CONFIG_SERIAL_NS16550
+        scripts/config --enable CONFIG_SERIAL_NS16550_CONSOLE
+        scripts/config --enable CONFIG_ARM_BRAHMA_B15
+        scripts/config --enable CONFIG_SATA_BROADCOM
+        scripts/config --enable CONFIG_BLK_DEV_SD
+        scripts/config --enable CONFIG_BLK_DEV_NVME
+        scripts/config --enable CONFIG_MMC
+        scripts/config --enable CONFIG_MTD_NAND_BCM
+        scripts/config --enable CONFIG_INITRAMFS_SOURCE
+        scripts/config --enable CONFIG_DEVTMPFS
+        scripts/config --enable CONFIG_DEVTMPFS_MOUNT
+        scripts/config --enable CONFIG_FHANDLE
+        scripts/config --enable CONFIG_TMPFS
+        scripts/config --enable CONFIG_TMPFS_POSIX_ACL
+
+        make olddefconfig
         cp .config arch/arm/configs/bcm7445_defconfig
-        echo "Generated minimal bcm7445_defconfig"
+        echo "Auto-configured bcm7445_defconfig with essential drivers"
 
     - name: Apply optional patches
       run: |
