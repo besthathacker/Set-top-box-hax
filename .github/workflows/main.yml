@@ -82,6 +82,7 @@ jobs:
         export CROSS_COMPILE=arm-linux-gnueabihf-
         make bcm7445_defconfig
         make -j$(nproc) zImage dtbs
+        mkdir -p ../output
         cp arch/arm/boot/zImage ../output/
         cp "$DTS_FILE" ../output/bcm7445.dtb
 
