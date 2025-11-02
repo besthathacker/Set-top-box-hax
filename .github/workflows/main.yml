@@ -27,19 +27,7 @@ jobs:
 
     - name: Auto-detect BCM74758 DTS
       run: |
-        DTS_DIR="kernel/arch/arm/boot/dts"
-        MATCHED_DTS=""
-        for f in $DTS_DIR/bcm7445*.dts; do
-          if grep -q "brahma-b15" "$f" && grep -q "memory_controllers@f1100000" "$f"; then
-            MATCHED_DTS="$f"
-            break
-          fi
-        done
-        if [ -z "$MATCHED_DTS" ]; then
-          MATCHED_DTS=$(ls $DTS_DIR/bcm7445*.dts | head -n1)
-        fi
-        echo "Selected DTS: $MATCHED_DTS"
-        echo "DTS_FILE=$MATCHED_DTS" >> $GITHUB_ENV
+        DTS_FILE="kernel/arch/arm/boot/dts/broadcom/bcm7445-bcm97445svmb.dts"
 
     - name: Generate minimal defconfig and tweak
       run: |
@@ -84,7 +72,7 @@ jobs:
         make -j$(nproc) zImage dtbs
         mkdir -p ../output
         cp arch/arm/boot/zImage ../output/
-        cp "$DTS_FILE" ../output/bcm7445.dtb
+        cp arch/arm/boot/dts/broadcom/bcm7445-bcm97445svmb.dts ../output/bcm7445.dtb
 
     - name: Build rootfs + initramfs
       run: |
